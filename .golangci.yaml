@@ -1,0 +1,102 @@
+# Линтер бэкенда. Запуск: ./lint.ps1 из корня или golangci-lint run из backend/.
+#
+# Набор собран явным списком при default: none. Так видно, что каждый линтер
+# включён осознанно, и обновление golangci-lint не подсунет новых правил
+# посреди хакатона.
+
+version: "2"
+
+run:
+  timeout: 3m
+  # Тесты — тоже часть решения и тоже оцениваются.
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # --- корректность ---
+
+    # Непроверенная ошибка транзакции в сервисе очереди означает право,
+    # выданное дважды. Тут это не стилистика.
+    - errcheck
+
+    # Штатный анализатор Go: несочетаемые типы в Printf, копирование
+    # мьютексов, потерянные результаты.
+    - govet
+
+    # Преемник staticcheck, gosimple и stylecheck: недостижимый код,
+    # бессмысленные условия, устаревшие вызовы стандартной библиотеки.
+    - staticcheck
+
+    # Присваивание, результат которого никто не читает, — обычно опечатка
+    # или забытая ветка.
+    - ineffassign
+
+    # Объявленное и неиспользуемое. Кейс отдельно оценивает отсутствие
+    # мёртвого кода.
+    - unused
+
+    # --- безопасность ---
+
+    # Сервис принимает недоверенный ввод (X-User-Id, Idempotency-Key, тела
+    # запросов) и ходит в базу. Ловит конкатенацию SQL и слабую случайность.
+    - gosec
+
+    # --- стиль ---
+
+    # Комментарии к экспортированному, else после return, теневые переменные.
+    # У проекта четыре автора, и код должен читаться как написанный одним.
+    - revive
+
+    # Лишние преобразования, копирование больших структур в цикле.
+    - gocritic
+
+    # Go 1.22+ создаёт переменную цикла заново на каждой итерации, но привычка
+    # писать x := x осталась.
+    - copyloopvar
+
+  settings:
+    errcheck:
+      # Ошибка в утверждении типа — тот же паникующий путь.
+      check-type-assertions: true
+      # Присваивание ошибки в _ должно быть осознанным.
+      check-blank: true
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+
+    revive:
+      rules:
+        - name: exported
+        - name: indent-error-flow
+        - name: context-as-argument
+        - name: error-strings
+        - name: error-return
+        - name: unreachable-code
+
+  exclusions:
+    rules:
+      # В тестах игнорирование ошибок и «небезопасные» константы — это
+      # фикстуры, а не путь исполнения в проде.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+
+      - path: internal/(catalog|queue|waitlist|worker)/
+        linters:
+          - revive
+        text: "^exported:"
+
+formatters:
+  enable:
+    - gofmt
+    # Группировка импортов: стандартная библиотека, внешние, свои.
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/shndo1337/avito-queue/backend

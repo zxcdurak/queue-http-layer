@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+
+# Бэкенд собирается своим контекстом ./backend — в контекст фронта не нужен.
+backend
+
+node_modules
+frontend/node_modules
+frontend/dist
+
+*.md
+*.ps1
+.env
+*.log

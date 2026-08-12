@@ -1,0 +1,59 @@
+name: avito-queue
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-queue}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-queue}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    ports:
+      # Не 5432: у половины команды стоит свой PostgreSQL и порт занят.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-queue}?sslmode=disable
+      LISTEN_ADDR: ":8080"
+      GRANT_TTL_SECONDS: ${GRANT_TTL_SECONDS:-120}
+      EXPIRER_INTERVAL_SECONDS: ${EXPIRER_INTERVAL_SECONDS:-1}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-5}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-10}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
